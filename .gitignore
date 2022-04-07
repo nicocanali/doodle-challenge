@@ -1,3 +1,7 @@
+# Local files and folders
+doodlenv/
+stream.jsonl.gz
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
