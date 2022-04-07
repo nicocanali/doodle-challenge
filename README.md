@@ -141,7 +141,7 @@ Done.
 
 > Measure also the performance impact / overhead of the json parser
 
-Done. Apprently, on my machine, time for just scanning through the whole colelction reduces by 69%.
+Done. Apprently, on my machine, time for just scanning through the whole colelction reduces by 67%.
 
 
 
