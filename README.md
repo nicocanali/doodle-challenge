@@ -36,7 +36,7 @@ The simplest way of doing this was to use the provided snippet and the example f
 gzcat stream.gz | kafka-console-producer --broker-list localhost:9092 --topic stream
 ```
 
-The problem here is that it wasn't easy to simulate a real stream.
+The problem here is that it wasn't easy to simulate a real stream with late timestamps.
 
 # 4. Send data to stdout
 
@@ -48,12 +48,12 @@ kafka-console-consumer --bootstrap-server localhost:9092 --topic stream --from-b
 
 but of course the output is not really helpful. 
 
-**But Python is here to help!** For this I created an iPython notebook to test various strategy (omitting the setup) so that I can leave the output there. Find it here [doodle_challenge.ipynb](doodle_challenge.ipynb). Further steps will also use this notebook.
+**But Python is here to help!** For this I created an iPython notebook to test various strategies (omitting the setup) and leaving the output saved. Find it here [doodle_challenge.ipynb](doodle_challenge.ipynb). Further steps will also use this notebook. I didn't put the result in a .py file just to keep things tidier.
 
 # 5. Simple count
 
 I tried different ways of counting. Firstly, I created a dictionary, where keys would be minutes, and values would be:
-- Using a list and then using `set()` over it
+- Using a list and then using `set()` over it when counting
 - Using collections.Counter
 - Using a set directly
 
@@ -66,11 +66,11 @@ The strategy for late timestamps could be one of the following:
 - Another strategy can be to aggregate overlapping minutes, for instance: `"15:39:00-15:40:00", "15:39:30-15:40:30", ...
 - We could publish ASAP, as I have done, but keep counting for a given minute and publish `missed_users` at a given point.
 
-For bitflips the story would have been a bit different. I guess we could define a range around the current timestamp, `ct ± X seconds` and check if the timestamp of the current message is within the window, and reject it otherwise. Also, we could think of a simple function that tries to ajust the timestamp starting from the biggest error (i.e. left to right in a timestamp represented in unix seconds) and minimize the error with repect to the current timestamp. For example, if the maximum error I allow is 5 seconds, I would only need to check the last digit. I left a draft in the notebook about this. 
+For bitflips the story would have been a bit different. I guess we could define a range around the current timestamp, `ct ± X seconds` and check if the timestamp of the current message is within the window, and reject it otherwise. Also, we could think of a simple function that tries to ajust the timestamp starting from the biggest error (i.e. left to right in a timestamp represented in unix seconds) and minimize the error with repect to the current timestamp. For example, if the maximum error I allow is 5 seconds, I would only need to check the last digit. I left a draft at the bottom of the notebook about this. 
 
 # 6. Benchmark
 
-I never did any benchmarking in the past. I looked a bit aroung and found a [memory_profiler](https://github.com/pythonprofilers/memory_profiler) library. It offers quite a bit of stuff, but for the sake of time I sticked to the `%memit` ipython magic to check memory consumption of the different functions and, as mentioned in step 5, `%time` for measuring wall time. `count_and_print_asap` function also has some manually crafted timer to see incremental times.
+I never did any benchmarking in the past. I looked a bit around and found a [memory_profiler](https://github.com/pythonprofilers/memory_profiler) library. It offers quite a bit of stuff, but for the sake of time I sticked to the basic `%memit` ipython magic to check memory consumption of the different functions and, as mentioned in step 5, `%time` for measuring wall time. `count_and_print_asap` function also has some manually crafted timer to see incremental times and computing metrics like users/second.
 
 # 7. Output to a new Kafka Topic
 
@@ -106,14 +106,14 @@ I kind of did this already in step 6. The difference is that now, when I output 
 
 # 9. How can we scale
 
-Different partitioning strategies can definitely help (for example one partition per minute?). This way the consumer can operate in parallel and continue monitoring for late timestamps, since we would know they'd come from a given partition. 
+Different partitioning strategies can definitely help (for example one partition per minute?). This way the consumer can operate in parallel and continue monitoring for late timestamps, since we would know they'd come from a given partition, in order.
 
-Reducing the size of the messages (if we're in control of the producer) can help reducing the memory footprint, and experimenting with better serializer can help performance (see bonus below).
+Reducing the size of the messages (if we're in control of the producer) can help reducing the memory footprint, and experimenting with better serializers can help performance (see bonus below).
 
 
 # 10. Edge cases, options, and misc
 
-In all of the above, I never checked for the structure of the incoming messages. For example, my producer outputs every kind of message to the same partition, while I blindly gave for granted that I would find a `ts` field.
+In all of the above, I never checked for the structure of the incoming messages. For example, my producer outputs every kind of message to the same partition, while I blindly gave for granted that I would find a `ts` field. Bad timestamps are definitely possible (as mentioned in bitflips above).
 
 Also, I decided to auto close the consumer after 1s of inactivity, but this would depend on the source we're dealing with.
 
@@ -121,37 +121,37 @@ Also, I decided to auto close the consumer after 1s of inactivity, but this woul
 
 > How can you scale it to improve throughput?
 
-Answered above
+Answered above.
 
 > You may want count things for different time frames but only do json parsing once.
 
-Not sure I understand this: can't I just set up counting for multiple timeframes already in the suggested implementation? I can set up different data structures (in this case a dict, but some type of Class would simplify this) where I aggregate by minute, day, year, etc and do it all in the same pass, so parsing would occur only once per message
+Not sure I understand this: can't I just set up counting for multiple timeframes already in the suggested implementation? I can set up different data structures (in this case a dict, but some type of Class would simplify this) where I aggregate by minute, day, year, etc and do it all in the same pass, so parsing would occur only once per message.
 
 > Explain how you would cope with failure if the app crashes mid day / mid year.
 
-If I understand correctly, offsets are stored on the consumer side, so if something crashed I would just resume from where I left off? Also, having sliding overlapping windows can help
+If I understand correctly, offsets are stored on the consumer side, so if something crashed I would just resume from where I left off? Also, having sliding overlapping windows can help.
 
 - When creating e.g. per minute statistics, how do you handle frames that arrive late or frames with a random timestamp (e.g. hit by a bitflip), describe a strategy?
 
-Answered above
+Answered above.
 
 > Make it accept data also from std-in (instead of Kafka) for rapid prototyping. (this might be helpful to have for testing anyways)
 
-Done
+Done.
 
 > Measure also the performance impact / overhead of the json parser
 
-Done. Apprently, on my machine, time for just scanning through the whole colelction reduces by 69%
+Done. Apprently, on my machine, time for just scanning through the whole colelction reduces by 69%.
 
 
 
 # What would I have done with more time
 
-- Try to use Docker/Kubernetes: in my current work, these technologies are not used (there are internal equivalents), so it would have costed me a bit to set this up
+- Try to use Docker/Kubernetes instead of running evering with command line commands directly: in my current work, these technologies are not used: there are internal equivalents in my current company, so I'm not experienced and it would have costed me a bit to set this up
 - Implement the late timestamp strategy: it wouldn't have costed me much, but setting up a test dataset would have, so I didn't do it
-- Experiment parallelization strategies, both on the producer side (partitions seems to be a good place to start) and on the consumer (apart from native multi-threading, I would have liked to check performances for frameworks like Beam/Spark)
+- Experiment parallelization strategies, both on the producer side (partitions seems to be a good place to start) and on the consumer (apart from native multi-threading/processing, I would have liked to check performances for frameworks like Beam/Spark)
 - Learn about Avro/Parquet and try them for serialization instead of JSON
-- Explore the Consumer/Producer's `metric_reporters` and `metrics()` methods
+- Explore the Consumer/Producer's `metric_reporters` option and `metrics()` methods
 - More in depth benchmarking, I'm sure there are  a variety of packages out there to optimize the code
 - Unit tests!
 
